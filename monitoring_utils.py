@@ -9,45 +9,71 @@ based on performance metrics like MAPE (Mean Absolute Percentage Error).
 import numpy as np
 
 
-def monitoring_stats(mape, threshold=10.0):
+from datetime import datetime, timedelta
+
+# Mock last training date (e.g., 25 days ago)
+LAST_TRAIN_DATE = datetime.now() - timedelta(days=25)
+
+def trigger_retraining():
     """
-    Analyze model performance and detect drift based on MAPE.
+    Simulates the retraining pipeline.
+    """
+    print("🔄 RETRAINING TRIGGERED: Starting automated model retraining pipeline...")
+    return True
+
+def monitoring_stats(mape, threshold=10.0, last_train_date=None):
+    """
+    Analyze model performance and detect drift based on MAPE and Data Age.
     
     Decision Logic:
-    - If MAPE <= threshold (default 10%) → Model is stable
-    - If MAPE > threshold → Drift detected, retraining required
+    - If MAPE > threshold → Drift detected
+    - If Data Age > 30 days → Stale model
+    - If either is true → Trigger retraining
     
     Args:
-        mape (float): Mean Absolute Percentage Error of the model
-        threshold (float): MAPE threshold for drift detection (default: 10.0%)
+        mape (float): Mean Absolute Percentage Error
+        threshold (float): MAPE threshold (default: 10.0%)
+        last_train_date (datetime): Date of last training (optional)
     
     Returns:
         dict: Monitoring status and recommendation
-            {
-                "mape": float,
-                "threshold": float,
-                "status": str,  # "stable" or "drift_detected"
-                "message": str,
-                "recommendation": str
-            }
     """
+    if last_train_date is None:
+        last_train_date = LAST_TRAIN_DATE
+        
+    status = "stable"
+    message = "✅ Model Stable"
+    recommendation = "No action required."
+    retrain_triggered = False
     
-    # Determine model status
-    if mape <= threshold:
-        status = "stable"
-        message = "✅ Model Stable"
-        recommendation = "No action required. Model performance is within acceptable range."
-    else:
+    # Check 1: Error Drift
+    if mape > threshold:
         status = "drift_detected"
-        message = "⚠️ Drift Detected — Retraining Required"
-        recommendation = f"Model MAPE ({mape:.2f}%) exceeds threshold ({threshold}%). Consider retraining with recent data."
+        message = "⚠️ Drift Detected (High Error)"
+        recommendation = f"Model MAPE ({mape:.2f}%) exceeds threshold ({threshold}%)."
+        retrain_triggered = True
+        
+    # Check 2: Data Age (Staleness)
+    days_since_train = (datetime.now() - last_train_date).days
+    if days_since_train > 30:
+        status = "stale"
+        message = "⚠️ Model Stale (Data > 30 days old)"
+        recommendation = f"Model hasn't been retrained in {days_since_train} days."
+        retrain_triggered = True
+        
+    if retrain_triggered:
+        trigger_retraining()
+        message += " — Retraining Started 🔄"
+        recommendation += " Automated retraining pipeline has been triggered."
     
     return {
         "mape": round(float(mape), 2),
         "threshold": float(threshold),
+        "days_since_retrain": days_since_train,
         "status": status,
         "message": message,
-        "recommendation": recommendation
+        "recommendation": recommendation,
+        "retrain_triggered": retrain_triggered
     }
 
 
