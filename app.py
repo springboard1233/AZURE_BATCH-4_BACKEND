@@ -19,8 +19,8 @@ CORS(app)  # Enable CORS for frontend integration
 # ====================================================
 # 1. LOAD MODEL & DATA
 # ====================================================
-MODEL_PATH = 'cpu_demand_model.pkl'
-DATA_PATH = 'mlmodeltrainingdataset.csv'
+MODEL_PATH = os.path.join('Models', 'cpu_demand_model.pkl')
+DATA_PATH = os.path.join('Data', 'mlmodeltrainingdataset.csv')
 
 model = None
 df = None
@@ -49,17 +49,17 @@ def load_resources():
     try:
         if os.path.exists(MODEL_PATH):
             model = joblib.load(MODEL_PATH)
-            print(f"✅ Model loaded from {MODEL_PATH}")
+            print(f"[OK] Model loaded from {MODEL_PATH}")
         else:
-            print(f"⚠ Warning: {MODEL_PATH} not found. Predictions will fail.")
+            print(f"[WARNING] Warning: {MODEL_PATH} not found. Predictions will fail.")
 
         if os.path.exists(DATA_PATH):
             df = pd.read_csv(DATA_PATH)
-            print(f"✅ Dataset loaded from {DATA_PATH}")
+            print(f"[OK] Dataset loaded from {DATA_PATH}")
         else:
-            print(f"⚠ Warning: {DATA_PATH} not found. Forecasting will fail.")
+            print(f"[WARNING] Warning: {DATA_PATH} not found. Forecasting will fail.")
     except Exception as e:
-        print(f"❌ Error loading resources: {e}")
+        print(f"[ERROR] Error loading resources: {e}")
 
 # Load resources on startup
 load_resources()

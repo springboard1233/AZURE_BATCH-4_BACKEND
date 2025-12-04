@@ -4,12 +4,12 @@ import threading
 from reporting_utils import generate_csv_report
 
 def run_daily_report():
-    print("⏰ Running daily report generation...")
+    print("[INFO] Running daily report generation...")
     report_path = generate_csv_report()
     if report_path:
-        print(f"✅ Report generated: {report_path}")
+        print(f"[OK] Report generated: {report_path}")
     else:
-        print("⚠ No history data found to generate report.")
+        print("[WARNING] No history data found to generate report.")
 
 def start_scheduler():
     """
@@ -21,7 +21,7 @@ def start_scheduler():
     # For demonstration purposes, run every 5 minutes
     schedule.every(5).minutes.do(run_daily_report)
     
-    print("⏳ Scheduler started. Running reports every 5 minutes...")
+    print("[INFO] Scheduler started. Running reports every 5 minutes...")
     
     while True:
         schedule.run_pending()
