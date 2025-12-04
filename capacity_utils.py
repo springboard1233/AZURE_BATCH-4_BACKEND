@@ -127,3 +127,33 @@ def calculate_optimal_capacity(forecast_values, target_utilization=70, buffer_pe
         "buffer_percentage": buffer_percentage,
         "reasoning": f"Optimal capacity calculated to maintain {target_utilization}% utilization at peak with {buffer_percentage}% safety buffer"
     }
+
+
+def optimization_suggestor(forecast_values, current_capacity, region="unknown"):
+    next_cycle_utilization = (float(forecast_values[0]) / current_capacity) * 100 if current_capacity > 0 and len(forecast_values) > 0 else 0
+    if next_cycle_utilization >= 85:
+        action = "increase"
+        percentage = 12
+        load_level = "High Load"
+        message = f"Increase CPU capacity by +{percentage}%"
+    elif next_cycle_utilization <= 40:
+        action = "decrease"
+        percentage = 10
+        load_level = "Low Load"
+        message = f"Reduce CPU capacity by -{percentage}%"
+    else:
+        action = "stable"
+        percentage = 0
+        load_level = "Normal"
+        message = "Capacity is adequate"
+
+    return {
+        "region": region,
+        "cpu_forecast_next_cycle_percent": round(next_cycle_utilization, 2),
+        "load_level": load_level,
+        "recommendation": {
+            "action": action,
+            "percentage": percentage,
+            "message": message
+        }
+    }
