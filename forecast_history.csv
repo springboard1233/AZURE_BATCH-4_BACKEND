@@ -1,0 +1,5 @@
+timestamp,region,service,forecast_value,actual_value,recommendation
+2025-12-05 20:44:34,East US,Compute,78.45707936507938,,Scale DOWN: East US has excess capacity. Remove approx 21 units.
+2025-12-05 20:44:34,East US,Compute,78.45707936507938,,Scale DOWN: East US has excess capacity. Remove approx 21 units.
+2025-12-05 20:44:37,East US,Compute,78.45707936507938,,Scale DOWN: East US has excess capacity. Remove approx 21 units.
+2025-12-05 20:44:37,East US,Compute,78.45707936507938,,Scale DOWN: East US has excess capacity. Remove approx 21 units.
