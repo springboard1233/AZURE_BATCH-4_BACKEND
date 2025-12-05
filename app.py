@@ -27,16 +27,14 @@ df = None
 
 # Exact feature columns as specified
 FEATURE_COLUMNS = [
-    'usage_cpu', 'usage_storage', 'users_active', 'economic_index', 'cloud_market_demand',
-    'holiday', 'month', 'year', 'is_weekend',
+    'usage_storage', 'users_active', 'economic_index', 'cloud_market_demand', 'holiday', 'month', 'year', 'is_weekend',
     'usage_cpu_lag_1', 'usage_storage_lag_1', 'users_active_lag_1',
     'usage_cpu_lag_3', 'usage_storage_lag_3', 'users_active_lag_3',
     'usage_cpu_lag_7', 'usage_storage_lag_7', 'users_active_lag_7',
-    'usage_cpu_rolling_mean_3', 'usage_cpu_rolling_mean_7',
+    'usage_cpu_rolling_mean_3', 'usage_storage_rolling_mean_3', 'users_active_rolling_mean_3',
+    'usage_cpu_rolling_mean_7', 'usage_storage_rolling_mean_7', 'users_active_rolling_mean_7',
     'usage_cpu_rolling_std_3', 'usage_cpu_rolling_std_7',
-    'usage_storage_rolling_mean_3', 'usage_storage_rolling_mean_7',
     'usage_storage_rolling_std_3', 'usage_storage_rolling_std_7',
-    'users_active_rolling_mean_3', 'users_active_rolling_mean_7',
     'users_active_rolling_std_3', 'users_active_rolling_std_7',
     'cpu_per_user', 'storage_per_user', 'cpu_storage_ratio', 'econ_demand_ratio',
     'system_stress', 'cpu_utilization_ratio', 'storage_efficiency',
@@ -67,6 +65,20 @@ load_resources()
 # ====================================================
 # 2. API ENDPOINTS
 # ====================================================
+
+@app.route('/')
+def index():
+    return jsonify({
+        "message": "Azure Demand Forecasting Backend is Running!",
+        "endpoints": [
+            "/api/predict_cpu (POST)",
+            "/api/forecast_7 (GET)",
+            "/api/forecast_30 (GET)",
+            "/api/capacity_planning (POST)",
+            "/api/monitoring (GET)",
+            "/api/report (GET)"
+        ]
+    })
 
 @app.route('/api/predict_cpu', methods=['POST'])
 def predict_cpu():
@@ -119,6 +131,9 @@ def forecast_7():
         })
         
     except Exception as e:
+        import traceback
+        with open("error.log", "w") as f:
+            f.write(traceback.format_exc())
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/forecast_30', methods=['GET'])
