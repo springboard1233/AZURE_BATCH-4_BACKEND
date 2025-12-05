@@ -1,51 +1,129 @@
-def get_capacity_recommendation(forecast_demand, available_capacity, region="East US", service="Compute"):
+"""
+Capacity Planning Utilities for Azure Demand Forecasting System
+Milestone 4 - Backend Team
+
+This module provides intelligent capacity planning and scaling recommendations
+based on forecasted resource utilization.
+"""
+
+import numpy as np
+
+
+def analyze_capacity(forecast_values, current_capacity):
     """
-    Generates a capacity scaling recommendation based on forecast demand vs available capacity.
+    Analyze capacity requirements and provide scaling recommendations.
+    
+    Decision Logic:
+    - If utilization > 80% → Scale Up (recommend adding 15% capacity)
+    - If utilization < 40% → Scale Down (recommend reducing 10% capacity)
+    - Otherwise → Stable (no action needed)
     
     Args:
-        forecast_demand (float): The predicted demand (e.g., CPU usage or units).
-        available_capacity (float): The current total capacity.
-        region (str): The cloud region (e.g., "East US").
-        service (str): The service type (e.g., "Compute", "Storage").
-        
+        forecast_values (list): List of forecasted demand values
+        current_capacity (int/float): Current system capacity
+    
     Returns:
-        dict: JSON-serializable dictionary with actionable recommendations.
+        dict: Capacity analysis with recommendation
+            {
+                "avg_forecast": float,
+                "capacity": float,
+                "utilization": float,
+                "status": str,  # "scale_up", "scale_down", or "stable"
+                "recommendation": str
+            }
     """
     
-    # Ensure inputs are floats/ints
-    forecast_demand = float(forecast_demand)
-    available_capacity = float(available_capacity)
+    # Calculate average forecast demand
+    avg_forecast = float(np.mean(forecast_values))
     
-    diff = forecast_demand - available_capacity
+    # Calculate utilization percentage
+    utilization = (avg_forecast / current_capacity) * 100 if current_capacity > 0 else 0
     
-    # Logic for recommendation text
-    if diff > 0:
-        # Demand exceeds capacity -> Scale UP
-        # Calculate percentage increase needed
-        pct_increase = (diff / available_capacity) * 100 if available_capacity > 0 else 100
-        recommendation = f"Scale UP: {region} needs +{int(diff)} units (+{pct_increase:.1f}%) to meet demand."
-        adjustment = f"+{int(diff)} units"
-    elif diff < 0:
-        # Surplus capacity -> Scale DOWN (or check if it's too much surplus)
-        # Let's say if surplus is > 20% of capacity, we suggest scaling down.
-        surplus = abs(diff)
-        pct_surplus = (surplus / available_capacity) * 100 if available_capacity > 0 else 0
+    # Determine scaling status and recommendation
+    if utilization > 80:
+        status = "scale_up"
+        # Recommend adding 15% capacity
+        recommended_additional = int(current_capacity * 0.15)
+        recommendation = f"⚠️ Scale UP: Add approx {recommended_additional} units (15% increase recommended)"
         
-        if pct_surplus > 20:
-            recommendation = f"Scale DOWN: {region} has excess capacity. Remove approx {int(surplus)} units."
-            adjustment = f"-{int(surplus)} units"
-        else:
-            recommendation = "Stable: Capacity is sufficient with safe buffer."
-            adjustment = "0 units"
+    elif utilization < 40:
+        status = "scale_down"
+        # Recommend reducing 10% capacity
+        recommended_reduction = int(current_capacity * 0.10)
+        recommendation = f"💡 Scale DOWN: Remove approx {recommended_reduction} units (10% reduction possible)"
+        
     else:
-        recommendation = "Stable: Demand matches capacity exactly."
-        adjustment = "0 units"
-
+        status = "stable"
+        recommendation = "✅ STABLE: Current capacity is adequate, no action needed"
+    
     return {
-        "region": region,
-        "service": service,
-        "forecast_demand": round(forecast_demand, 2),
-        "available_capacity": round(available_capacity, 2),
-        "recommended_adjustment": adjustment,
-        "recommendation_text": recommendation # Adding a descriptive text field as well
+        "avg_forecast": round(avg_forecast, 2),
+        "capacity": float(current_capacity),
+        "utilization": round(utilization, 2),
+        "status": status,
+        "recommendation": recommendation
+    }
+
+
+def detailed_capacity_report(forecast_values, current_capacity):
+    """
+    Generate a detailed capacity planning report with additional metrics.
+    
+    Args:
+        forecast_values (list): List of forecasted demand values
+        current_capacity (int/float): Current system capacity
+    
+    Returns:
+        dict: Detailed capacity report
+    """
+    
+    # Get basic capacity analysis
+    basic_analysis = analyze_capacity(forecast_values, current_capacity)
+    
+    # Add detailed metrics
+    forecast_array = np.array(forecast_values)
+    
+    detailed_report = {
+        **basic_analysis,
+        "forecast_min": round(float(np.min(forecast_array)), 2),
+        "forecast_max": round(float(np.max(forecast_array)), 2),
+        "forecast_std": round(float(np.std(forecast_array)), 2),
+        "peak_utilization": round((float(np.max(forecast_array)) / current_capacity) * 100, 2) if current_capacity > 0 else 0,
+        "min_utilization": round((float(np.min(forecast_array)) / current_capacity) * 100, 2) if current_capacity > 0 else 0,
+        "capacity_buffer": round(current_capacity - float(np.max(forecast_array)), 2),
+        "days_analyzed": len(forecast_values)
+    }
+    
+    return detailed_report
+
+
+def calculate_optimal_capacity(forecast_values, target_utilization=70, buffer_percentage=10):
+    """
+    Calculate optimal capacity based on forecasted demand.
+    
+    Args:
+        forecast_values (list): List of forecasted demand values
+        target_utilization (float): Target utilization percentage (default: 70%)
+        buffer_percentage (float): Additional buffer percentage for safety (default: 10%)
+    
+    Returns:
+        dict: Optimal capacity recommendation
+    """
+    
+    peak_demand = float(np.max(forecast_values))
+    avg_demand = float(np.mean(forecast_values))
+    
+    # Calculate capacity needed for target utilization
+    capacity_for_peak = peak_demand / (target_utilization / 100)
+    
+    # Add buffer for safety
+    optimal_capacity = capacity_for_peak * (1 + buffer_percentage / 100)
+    
+    return {
+        "optimal_capacity": round(optimal_capacity, 2),
+        "peak_demand": round(peak_demand, 2),
+        "avg_demand": round(avg_demand, 2),
+        "target_utilization": target_utilization,
+        "buffer_percentage": buffer_percentage,
+        "reasoning": f"Optimal capacity calculated to maintain {target_utilization}% utilization at peak with {buffer_percentage}% safety buffer"
     }

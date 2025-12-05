@@ -1,305 +1,381 @@
-import os
+"""
+Azure Demand Forecasting & Capacity Optimization System
+Milestone 4 - Backend API
+
+Flask REST API for CPU demand forecasting with:
+- Model deployment
+- Recursive forecasting (7 and 30 days)
+- Capacity planning
+- Model drift monitoring
+- Automated reporting
+"""
+
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+import joblib
 import pandas as pd
 import numpy as np
-import joblib
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+import os
+import traceback
 
-# Import custom utilities
-from capacity_utils import get_capacity_recommendation
-from monitoring_utils import monitoring_stats
-from forecast_utils import prepare_recursive_features
-from reporting_utils import save_forecast_history, generate_csv_report
-import threading
-from scheduler import start_scheduler
+# Import custom utility modules
+from forecast_utils import recursive_forecast_cpu, prepare_single_prediction_features
+from capacity_utils import analyze_capacity, detailed_capacity_report
+from monitoring_utils import monitoring_stats, comprehensive_model_health
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for frontend integration
 
-# ====================================================
-# 1. LOAD MODEL & DATA
-# ====================================================
-MODEL_PATH = os.path.join('Models', 'cpu_demand_model.pkl')
-DATA_PATH = os.path.join('Data', 'mlmodeltrainingdataset.csv')
+# ---------------------------------------------------
+# 1) LOAD MODEL AND DATASET AT STARTUP
+# ---------------------------------------------------
+print("=" * 60)
+print("🚀 Azure Demand Forecasting API - Starting Up...")
+print("=" * 60)
 
-model = None
-df = None
+try:
+    # Load trained CPU demand model
+    model_path = os.path.join("Models", "cpu_demand_model.pkl")
+    cpu_model = joblib.load(model_path)
+    print(f"✅ Loaded CPU model from: {model_path}")
+    
+    # Load ML-ready dataset
+    data_path = os.path.join("Data", "feature engineered dataset", "mlmodeltrainingdataset.csv")
+    df = pd.read_csv(data_path)
+    print(f"✅ Loaded dataset from: {data_path}")
+    print(f"   Dataset shape: {df.shape}")
+    print(f"   Features: {len(cpu_model.feature_names_in_)}")
+    
+    print("=" * 60)
+    print("✅ Initialization Complete - API Ready!")
+    print("=" * 60)
+    
+except Exception as e:
+    print("=" * 60)
+    print(f"❌ ERROR during initialization: {str(e)}")
+    print("=" * 60)
+    raise
 
-# Exact feature columns as specified
-FEATURE_COLUMNS = [
-    'usage_storage', 'users_active', 'economic_index', 'cloud_market_demand', 'holiday', 'month', 'year', 'is_weekend',
-    'usage_cpu_lag_1', 'usage_storage_lag_1', 'users_active_lag_1',
-    'usage_cpu_lag_3', 'usage_storage_lag_3', 'users_active_lag_3',
-    'usage_cpu_lag_7', 'usage_storage_lag_7', 'users_active_lag_7',
-    'usage_cpu_rolling_mean_3', 'usage_storage_rolling_mean_3', 'users_active_rolling_mean_3',
-    'usage_cpu_rolling_mean_7', 'usage_storage_rolling_mean_7', 'users_active_rolling_mean_7',
-    'usage_cpu_rolling_std_3', 'usage_cpu_rolling_std_7',
-    'usage_storage_rolling_std_3', 'usage_storage_rolling_std_7',
-    'users_active_rolling_std_3', 'users_active_rolling_std_7',
-    'cpu_per_user', 'storage_per_user', 'cpu_storage_ratio', 'econ_demand_ratio',
-    'system_stress', 'cpu_utilization_ratio', 'storage_efficiency',
-    'region_East US', 'region_North Europe', 'region_Southeast Asia', 'region_West US',
-    'type_Container', 'type_Storage', 'type_VM'
-]
 
-def load_resources():
-    global model, df
-    try:
-        if os.path.exists(MODEL_PATH):
-            model = joblib.load(MODEL_PATH)
-            print(f"[OK] Model loaded from {MODEL_PATH}")
-        else:
-            print(f"[WARNING] Warning: {MODEL_PATH} not found. Predictions will fail.")
+# ---------------------------------------------------
+# 2) HELPER FUNCTION - Convert numpy types to Python types
+# ---------------------------------------------------
+def convert_to_python_types(obj):
+    """Recursively convert numpy types to Python native types for JSON serialization."""
+    if isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, dict):
+        return {key: convert_to_python_types(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_to_python_types(item) for item in obj]
+    else:
+        return obj
 
-        if os.path.exists(DATA_PATH):
-            df = pd.read_csv(DATA_PATH)
-            print(f"[OK] Dataset loaded from {DATA_PATH}")
-        else:
-            print(f"[WARNING] Warning: {DATA_PATH} not found. Forecasting will fail.")
-    except Exception as e:
-        print(f"[ERROR] Error loading resources: {e}")
 
-# Load resources on startup
-load_resources()
+# ---------------------------------------------------
+# 3) API ENDPOINTS
+# ---------------------------------------------------
 
-# ====================================================
-# 2. API ENDPOINTS
-# ====================================================
-
-@app.route('/')
-def index():
+@app.route("/", methods=["GET"])
+def home():
+    """Health check endpoint."""
     return jsonify({
-        "message": "Azure Demand Forecasting Backend is Running!",
-        "endpoints": [
-            "/api/predict_cpu (POST)",
-            "/api/forecast_7 (GET)",
-            "/api/forecast_30 (GET)",
-            "/api/capacity_planning (POST)",
-            "/api/monitoring (GET)",
-            "/api/report (GET)"
-        ]
+        "status": "running",
+        "message": "🚀 Azure Demand Forecasting API is running!",
+        "version": "Milestone 4",
+        "endpoints": {
+            "health": "GET /",
+            "metrics": "GET /api/metrics",
+            "predict": "POST /api/predict_cpu",
+            "forecast_7": "GET /api/forecast_7",
+            "forecast_30": "GET /api/forecast_30",
+            "capacity": "POST /api/capacity_planning",
+            "monitoring": "GET /api/monitoring",
+            "report": "GET /api/report"
+        }
     })
 
-@app.route('/api/predict_cpu', methods=['POST'])
+
+@app.route("/api/metrics", methods=["GET"])
+def metrics():
+    """Get model status and metadata."""
+    try:
+        return jsonify({
+            "cpu_model": {
+                "status": "loaded",
+                "type": type(cpu_model).__name__,
+                "n_features": len(cpu_model.feature_names_in_),
+                "features": cpu_model.feature_names_in_.tolist()
+            },
+            "dataset": {
+                "status": "loaded",
+                "shape": df.shape,
+                "rows": len(df),
+                "columns": len(df.columns)
+            }
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/predict_cpu", methods=["POST"])
 def predict_cpu():
     """
-    Predicts CPU usage for a single data point.
+    Single CPU prediction with custom input.
+    
+    Request Body (JSON):
+        {
+            "usage_cpu": 75.5,
+            "usage_storage": 82.3,
+            "users_active": 1500,
+            ...
+            (can provide all 44 features or partial - missing lag/rolling features will be calculated)
+        }
+    
+    Response:
+        {
+            "prediction": 78.3,
+            "input_features": {...}
+        }
     """
     try:
-        if not model:
-            return jsonify({"error": "Model not loaded"}), 500
-            
-        data = request.get_json()
+        # Get input data
+        input_data = request.get_json()
         
-        # Create DataFrame from input
-        input_df = pd.DataFrame([data])
+        if not input_data:
+            return jsonify({"error": "No input data provided"}), 400
         
-        # Ensure all columns exist (fill 0 for missing)
-        for col in FEATURE_COLUMNS:
-            if col not in input_df.columns:
-                input_df[col] = 0
-                
-        # Reorder to match model expectation
-        input_df = input_df[FEATURE_COLUMNS]
+        # Prepare features (calculate lag/rolling if not provided)
+        features = prepare_single_prediction_features(input_data, df)
         
-        prediction = model.predict(input_df)[0]
+        # Reindex to match model's expected feature order
+        feature_vector = features.reindex(cpu_model.feature_names_in_).values.reshape(1, -1)
+        
+        # Make prediction
+        prediction = cpu_model.predict(feature_vector)[0]
         
         return jsonify({
-            "predicted_cpu_usage": float(prediction)
+            "prediction": float(prediction),
+            "input_features": convert_to_python_types(features.to_dict())
         })
         
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return jsonify({
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
 
-@app.route('/api/forecast_7', methods=['GET'])
+
+@app.route("/api/forecast_7", methods=["GET"])
 def forecast_7():
     """
-    Returns a 7-day recursive forecast.
+    7-day recursive CPU demand forecast.
+    
+    Response:
+        {
+            "forecast_days": 7,
+            "predictions": [78.5, 79.2, 80.1, ...]
+        }
     """
     try:
-        if model is None or df is None:
-            return jsonify({"error": "Model or Data not available"}), 500
-            
-        # Get the last row of data to start forecasting from
-        last_row = df.iloc[-1]
-        
-        forecasts = prepare_recursive_features(last_row, 7, model, FEATURE_COLUMNS)
+        # Generate 7-day forecast
+        predictions = recursive_forecast_cpu(df, cpu_model, n_days=7)
         
         return jsonify({
-            "forecast_period": "7 days",
-            "forecast_values": [float(x) for x in forecasts]
+            "forecast_days": 7,
+            "predictions": predictions
         })
         
     except Exception as e:
-        import traceback
-        with open("error.log", "w") as f:
-            f.write(traceback.format_exc())
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
 
-@app.route('/api/forecast_30', methods=['GET'])
+
+@app.route("/api/forecast_30", methods=["GET"])
 def forecast_30():
     """
-    Returns a 30-day recursive forecast.
+    30-day recursive CPU demand forecast.
+    
+    Response:
+        {
+            "forecast_days": 30,
+            "predictions": [78.5, 79.2, 80.1, ...]
+        }
     """
     try:
-        if model is None or df is None:
-            return jsonify({"error": "Model or Data not available"}), 500
-            
-        # Get the last row of data to start forecasting from
-        last_row = df.iloc[-1]
-        
-        forecasts = prepare_recursive_features(last_row, 30, model, FEATURE_COLUMNS)
+        # Generate 30-day forecast
+        predictions = recursive_forecast_cpu(df, cpu_model, n_days=30)
         
         return jsonify({
-            "forecast_period": "30 days",
-            "forecast_values": [float(x) for x in forecasts]
+            "forecast_days": 30,
+            "predictions": predictions
         })
         
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
 
-@app.route('/api/capacity_planning', methods=['POST'])
+
+@app.route("/api/capacity_planning", methods=["POST"])
 def capacity_planning():
     """
-    Provides capacity scaling recommendations.
-    Expects JSON: { "capacity": 100, "region": "East US", "service": "Compute" }
+    Capacity planning analysis with scaling recommendations.
+    
+    Request Body (JSON):
+        {
+            "capacity": 10000,
+            "forecast_days": 7  (optional, default: 7)
+        }
+    
+    Response:
+        {
+            "avg_forecast": 78.5,
+            "capacity": 10000,
+            "utilization": 0.785,
+            "status": "stable" / "scale_up" / "scale_down",
+            "recommendation": "..."
+        }
     """
     try:
+        # Get input data
         data = request.get_json()
-        current_capacity = data.get('capacity', 100)
-        region = data.get('region', 'East US')
-        service = data.get('service', 'Compute')
         
-        # Get latest forecast (using 7-day average as a baseline for planning)
-        # In a real scenario, we might call the forecast function or use cached values.
-        # Here we will re-run a quick 7-day forecast to get the utilization trend.
-        if model is not None and df is not None:
-            last_row = df.iloc[-1]
-            forecasts = prepare_recursive_features(last_row, 7, model, FEATURE_COLUMNS)
-            avg_forecast = np.mean(forecasts)
-        else:
-            # Fallback if model missing (for testing endpoint structure)
-            avg_forecast = 125.0 # Example value
-            
-        result = get_capacity_recommendation(avg_forecast, current_capacity, region, service)
+        if not data or "capacity" not in data:
+            return jsonify({"error": "Missing 'capacity' in request body"}), 400
         
-        # Save to history for reporting
-        save_forecast_history({
-            "region": region,
-            "service": service,
-            "forecast_value": avg_forecast,
-            "recommendation": result["recommendation_text"]
-        })
+        capacity = data["capacity"]
+        forecast_days = data.get("forecast_days", 7)
         
-        return jsonify(result)
+        # Generate forecast
+        predictions = recursive_forecast_cpu(df, cpu_model, n_days=forecast_days)
+        
+        # Analyze capacity
+        analysis = analyze_capacity(predictions, capacity)
+        
+        return jsonify(analysis)
         
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
 
-@app.route('/api/monitoring', methods=['GET'])
+
+@app.route("/api/monitoring", methods=["GET"])
 def monitoring():
     """
-    Returns model health status, checking for drift and data age.
+    Model health monitoring and drift detection.
+    
+    Query Parameters:
+        mape (optional): Current MAPE value (default: 8.5 for demo)
+    
+    Response:
+        {
+            "mape": 8.5,
+            "threshold": 10.0,
+            "status": "stable" / "drift_detected",
+            "message": "...",
+            "recommendation": "..."
+        }
     """
     try:
-        # In a real system, we would calculate MAPE against actuals.
-        # Here we simulate a MAPE value.
-        # Let's simulate a slightly higher error to test logic, or keep it stable.
-        simulated_mape = 6.5 
+        # Get MAPE from query parameters (or use demo value)
+        mape = float(request.args.get("mape", 8.5))
         
-        # We can also simulate passing a specific date if we tracked it in a file
-        result = monitoring_stats(simulated_mape)
-        return jsonify(result)
+        # Analyze model health
+        health = monitoring_stats(mape)
+        
+        return jsonify(health)
         
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
 
-@app.route('/api/report', methods=['GET'])
+
+@app.route("/api/report", methods=["GET"])
 def report():
     """
-    Returns a summary report of forecasts and system health.
+    Comprehensive automated report combining forecast, capacity, and monitoring.
+    
+    Query Parameters:
+        capacity (optional): Current capacity value (default: 10000)
+        mape (optional): Current MAPE value (default: 8.5)
+    
+    Response:
+        {
+            "report_type": "comprehensive",
+            "forecast_summary": {...},
+            "capacity_analysis": {...},
+            "model_health": {...}
+        }
     """
     try:
-        # Gather data
+        # Get parameters
+        capacity = float(request.args.get("capacity", 10000))
+        mape = float(request.args.get("mape", 8.5))
+        
+        # Generate 7-day forecast
+        forecast_7 = recursive_forecast_cpu(df, cpu_model, n_days=7)
+        
+        # Build comprehensive report
         report_data = {
-            "system_status": "Active",
-            "model_status": "Stable", # Could come from monitoring()
-            "forecast_summary_7_days": [],
-            "avg_forecast_utilization": 0.0,
-            "recommendation": "N/A"
+            "report_type": "comprehensive",
+            "generated_at": pd.Timestamp.now().isoformat(),
+            
+            "forecast_summary": {
+                "days_forecasted": 7,
+                "predictions": forecast_7,
+                "avg_forecast": float(np.mean(forecast_7)),
+                "min_forecast": float(np.min(forecast_7)),
+                "max_forecast": float(np.max(forecast_7)),
+                "trend": "increasing" if forecast_7[-1] > forecast_7[0] else "decreasing"
+            },
+            
+            "capacity_analysis": analyze_capacity(forecast_7, capacity),
+            
+            "model_health": monitoring_stats(mape)
         }
         
-        if model is not None and df is not None:
-            # Run forecast
-            last_row = df.iloc[-1]
-            forecasts = prepare_recursive_features(last_row, 7, model, FEATURE_COLUMNS)
-            avg_val = float(np.mean(forecasts))
-            
-            # Get capacity rec (assuming default capacity of 100 for report context)
-            cap_rec = get_capacity_recommendation(avg_val, 100, "East US", "Compute")
-            
-            report_data["forecast_summary_7_days"] = [float(x) for x in forecasts]
-            report_data["avg_forecast_utilization"] = avg_val
-            report_data["recommendation"] = cap_rec["recommendation_text"]
-            
-        return jsonify(report_data)
+        return jsonify(convert_to_python_types(report_data))
         
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
 
-@app.route('/api/trigger_automation', methods=['POST'])
-def trigger_automation():
-    """
-    Manually triggers the automated report generation.
-    """
-    try:
-        report_path = generate_csv_report()
-        if report_path:
-            return jsonify({"message": "Automation triggered", "report_file": report_path})
-        else:
-            return jsonify({"message": "No data to report"}), 404
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
-if __name__ == '__main__':
-    print("Starting Azure Demand Forecasting Backend...")
+# ---------------------------------------------------
+# 4) ERROR HANDLERS
+# ---------------------------------------------------
+
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({"error": "Endpoint not found"}), 404
+
+
+@app.errorhandler(500)
+def internal_error(error):
+    return jsonify({"error": "Internal server error"}), 500
+
+
+# ---------------------------------------------------
+# 5) RUN SERVER
+# ---------------------------------------------------
+if __name__ == "__main__":
+    print("\n" + "=" * 60)
+    print("🌐 Starting Flask Development Server...")
+    print("📍 Access the API at: http://localhost:5000")
+    print("=" * 60 + "\n")
     
-    # Start scheduler in background thread
-    t = threading.Thread(target=start_scheduler, daemon=True)
-    t.start()
-    
-    app.run(debug=True, port=5000)
-
-# ====================================================
-# 📌 INSTRUCTIONS
-# ====================================================
-"""
-HOW TO RUN THE BACKEND:
-1. Ensure you have Python installed.
-2. Install dependencies:
-   pip install -r requirements.txt
-3. Place 'cpu_demand_model.pkl' and 'mlmodeltrainingdataset.csv' in this folder.
-4. Run the app:
-   python app.py
-
-HOW TO CALL APIS (CURL EXAMPLES):
-
-1. Predict Single CPU Usage:
-   curl -X POST http://127.0.0.1:5000/api/predict_cpu -H "Content-Type: application/json" -d '{"usage_cpu": 45.2, "usage_storage": 120.5, ...}'
-
-2. Get 7-Day Forecast:
-   curl http://127.0.0.1:5000/api/forecast_7
-
-3. Get Capacity Recommendation:
-   curl -X POST http://127.0.0.1:5000/api/capacity_planning -H "Content-Type: application/json" -d '{"capacity": 100}'
-
-4. Check Model Health:
-   curl http://127.0.0.1:5000/api/monitoring
-
-HOW TO DEPLOY ON AZURE APP SERVICE:
-1. Create a 'startup.sh' or configure the startup command in Azure Portal:
-   gunicorn --bind=0.0.0.0 --timeout 600 app:app
-2. Zip the project files (excluding venv).
-3. Deploy via Azure CLI:
-   az webapp up --sku F1 --name <your-app-name>
-"""
+    app.run(debug=True, host="0.0.0.0", port=5000)
