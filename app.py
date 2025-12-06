@@ -1,6 +1,7 @@
 """
 Azure Demand Forecasting & Capacity Optimization System
 Milestone 4 - Backend API
+(Clean Re-initialization)
 
 Flask REST API for CPU demand forecasting with:
 - Model deployment
@@ -20,7 +21,7 @@ import traceback
 
 # Import custom utility modules
 from forecast_utils import recursive_forecast_cpu, prepare_single_prediction_features
-from capacity_utils import analyze_capacity, detailed_capacity_report, optimization_suggestor
+from capacity_utils import analyze_capacity, detailed_capacity_report
 from monitoring_utils import monitoring_stats, comprehensive_model_health
 
 app = Flask(__name__)
@@ -94,7 +95,6 @@ def home():
             "forecast_7": "GET /api/forecast_7",
             "forecast_30": "GET /api/forecast_30",
             "capacity": "POST /api/capacity_planning",
-            "optimization": "POST /api/optimization",
             "monitoring": "GET /api/monitoring",
             "report": "GET /api/report"
         }
@@ -270,28 +270,6 @@ def capacity_planning():
         }), 500
 
 
-@app.route("/api/optimization", methods=["POST"])
-def optimization():
-    try:
-        data = request.get_json()
-        if not data or "capacity" not in data:
-            return jsonify({"error": "Missing 'capacity' in request body"}), 400
-
-        capacity = float(data["capacity"])
-        forecast_days = int(data.get("forecast_days", 1))
-        region = data.get("region", "unknown")
-
-        predictions = recursive_forecast_cpu(df, cpu_model, n_days=forecast_days)
-        suggestion = optimization_suggestor(predictions, capacity, region)
-
-        return jsonify(suggestion)
-    except Exception as e:
-        return jsonify({
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
-
-
 @app.route("/api/monitoring", methods=["GET"])
 def monitoring():
     """
@@ -402,4 +380,3 @@ if __name__ == "__main__":
     print("=" * 60 + "\n")
     
     app.run(debug=True, host="0.0.0.0", port=5000)
-

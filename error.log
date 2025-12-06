@@ -1,0 +1,20 @@
+Traceback (most recent call last):
+  File "C:\Users\Aditya\OneDrive\Attachments\Desktop\azureinfosys\AZURE_BATCH-4_BACKEND\app.py", line 128, in forecast_7
+    forecasts = prepare_recursive_features(last_row, 7, model, FEATURE_COLUMNS)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Aditya\OneDrive\Attachments\Desktop\azureinfosys\AZURE_BATCH-4_BACKEND\forecast_utils.py", line 82, in prepare_recursive_features
+    pred = model.predict(input_data)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Aditya\Anaconda3\Lib\site-packages\sklearn\ensemble\_forest.py", line 984, in predict
+    X = self._validate_X_predict(X)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Aditya\Anaconda3\Lib\site-packages\sklearn\ensemble\_forest.py", line 599, in _validate_X_predict
+    X = self._validate_data(X, dtype=DTYPE, accept_sparse="csr", reset=False)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Aditya\Anaconda3\Lib\site-packages\sklearn\base.py", line 580, in _validate_data
+    self._check_feature_names(X, reset=reset)
+  File "C:\Users\Aditya\Anaconda3\Lib\site-packages\sklearn\base.py", line 507, in _check_feature_names
+    raise ValueError(message)
+ValueError: The feature names should match those that were passed during fit.
+Feature names must be in the same order as they were in fit.
+
